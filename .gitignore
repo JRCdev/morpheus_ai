@@ -210,3 +210,6 @@ __marimo__/
 #  JSON files will be used to store information such as API keys, we want to keep these out
 **.json
 
+# SQLite Databases
+#  Conversation records will be stored in these, we also want to keep these out.
+**.db

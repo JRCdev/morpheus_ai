@@ -1,0 +1,21 @@
+{
+  "llm":
+	{
+	"site": "",
+	"model": "",
+	"key": ""
+	}
+  "elasticsearch":
+	{
+	"name": "",
+	"host": "",
+	"key": "",
+	"transformer": "",
+	"model": ""
+	}
+  "data":
+	{
+	"ebooks": "",
+	"subtitles": ""
+	}
+}

@@ -15,6 +15,7 @@ from tqdm import tqdm
 import sqlite3
 import random
 import charset_normalizer
+import json
 
 random.seed()
 
@@ -92,7 +93,8 @@ def chunk_operations(operations, chunk_size=100):
 def ebook_match(nm):
   return (".epub" in nm or ".pdf" in nm) and nm[:2] != "._"
 
-configs = json.readf("config.json")
+with open('config.json', 'r') as file:
+    configs = json.load(file)
 
 client = Elasticsearch(
     # For local development

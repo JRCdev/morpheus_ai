@@ -14,6 +14,7 @@ from llama_cpp import Llama
 from tqdm import tqdm
 import sqlite3
 import random
+import json
 
 random.seed()
 
@@ -46,7 +47,8 @@ def pare_down(input):
 def ebook_match(nm):
   return (".epub" in nm or ".pdf" in nm) and nm[:2] != "._"
 
-configs = json.readf("config.json")
+with open('config.json', 'r') as file:
+    configs = json.load(file)
 
 client = Elasticsearch(
     # For local development

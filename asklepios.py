@@ -5,11 +5,13 @@ import sqlite3
 from datetime import datetime as dt
 import random as r
 import re 
+import json
 
 pyramid_height = 4
 
-configs = json.readf("config.json")
-
+with open('config.json', 'r') as file:
+    config = json.load(file)
+    
 API_KEY = config["llm"]["key"]
 URL = config["llm"]["site"]
 MODEL_NAME = config["llm"]["model"]

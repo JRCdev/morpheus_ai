@@ -5,6 +5,7 @@
 import os
 from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
+import json
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -31,7 +32,8 @@ def pretty_print_response(response):
             Text: {text}"""
             print(pretty_output)
 
-configs = json.readf("config.json")
+with open('config.json', 'r') as file:
+    configs = json.load(file)
 
 client = Elasticsearch(
     # For local development

@@ -108,8 +108,8 @@ if __name__ == "__main__":
     message_no = len(convo)
 
     for x in range(min(len(convo),len(resps))):
-        print(f"{resps[x]}\n+> {convo[x]}\n\n")
-    print(f"{resps[-1]}\n" if len(resps) > 1 else "")
+        xp(Markdown(f"{resps[x]}\n+> {convo[x]}\n\n"))
+    xp(Markdown(f"{resps[-1]}\n" if len(resps) > 1 else ""))
 
     text_input = big_input("> ")
     print("\n")

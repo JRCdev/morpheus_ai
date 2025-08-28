@@ -14,6 +14,8 @@ from llama_cpp import Llama
 from tqdm import tqdm
 import sqlite3
 import random
+import charset_normalizer
+import json
 
 random.seed()
 
@@ -21,18 +23,57 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 # text block size
 tbs = 350
-
-top = []
-
-with open("./100_most_common.txt") as f:
-  top = [l.strip().lower() for l in f.readlines()]
+hash_library = {}
 
 def pare_down(input):
   input = input.lower()
   input = re.sub(r"[\W\s]+", " ", input)
-  for w in top:
-    input = input.replace(f" {w} ", " ")
   return input
+
+def detect_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        result = charset_normalizer.detect(f.read(10000))  # Read first 10KB
+        return result['encoding']
+
+def encode_with_mem(instr, model):
+  # Calculate hash of the input string
+  hash_value = hash(instr)
+  
+  # Check if hash exists in library
+  if hash_value in hash_library:
+      return hash_library[hash_value]
+  
+  # If not in library, compute f() and store result
+  result = model.encode(instr).tolist()
+  hash_library[hash_value] = result
+  return result
+
+
+def weighted_encode(strs, weights, model):
+  for i, x in enumerate(strs):
+    if x is None or len(x) == 0:
+      strs[i] = "dummy"
+      weights[i] = 0
+
+  vectors = [encode_with_mem(x, model) for x in strs]
+  vector_len = len(vectors[0])
+  weight_sum = sum(weights)
+
+  if weight_sum == 0:
+      raise ValueError("Sum of weights cannot be zero")
+  
+  result = [0] * vector_len
+  
+  for i in range(vector_len):
+      for vec, weight in zip(vectors, weights):
+          result[i] += vec[i] * weight
+  
+  # Divide by sum of weights to get weighted average
+  return [x / weight_sum for x in result]
+
+def chunk_operations(operations, chunk_size=100):
+    for i in range(0, len(operations), chunk_size):
+        yield operations[i:i + chunk_size]
 
 # Useful links for extracting data:
 
@@ -46,7 +87,8 @@ def pare_down(input):
 def ebook_match(nm):
   return (".epub" in nm or ".pdf" in nm) and nm[:2] != "._"
 
-configs = json.readf("config.json")
+with open('config.json', 'r') as file:
+    configs = json.load(file)
 
 client = Elasticsearch(
     # For local development
@@ -129,7 +171,7 @@ for item in tqdm(x.fetchall()):
       #print(len(line))
       operations.append({"index": {"_index": "book_index"}})
       operations.append({
-        "title":"{} pt {}".format(title,str(x)),
+        "title": f"{title} pt {str(1+x)}/{str(1+len(text)//tbs)}",
         "text_vector":model.encode(line).tolist(),
         "text":line,
         "description":description,
@@ -152,30 +194,29 @@ for item in tqdm(book_list):
     meta_tree = ET.parse(item[1])
     tags = [x.text for x in meta_tree.findall('.//{http://purl.org/dc/elements/1.1/}subject')]
     tstr = " ".join(tags)
-    #print(tags)
-    title = meta_tree.find('.//{http://purl.org/dc/elements/1.1/}title').text
-    #print(title)
-    author = meta_tree.find('.//{http://purl.org/dc/elements/1.1/}creator').text
-    #print(author)
-    description = meta_tree.find('.//{http://purl.org/dc/elements/1.1/}description')
-    if description != None:
-      description = description.text
-    else:
-      description = "This is an excerpt from the book {} by {}".format(title, author)
+
+    title_elem = meta_tree.find('//{http://purl.org/dc/elements/1.1/}title')
+    title = title_elem.text if title_elem is not None else meta.split("/")[-2]
+
+    author_elem = meta_tree.find('//{http://purl.org/dc/elements/1.1/}creator')
+    author = author_elem.text if author_elem is not None else meta.split("/")[-3]
+
+    description_elem = meta_tree.find('//{http://purl.org/dc/elements/1.1/}description')
+    description = description_elem.text if description_elem is not None else f"This is an excerpt from the book {title} by {author}"
+
     pddesc = pare_down(description)
-    #print(description)
-    # with open(book_addr, 'rb') as f:
-    #   hash = str(md5(f.read()).hexdigest()[:10])
-    #print(hash)
-    text = textract.process(book_addr).decode("utf-8", errors="ignore").split(" ")
+    try:
+      text = textract.process(book_addr, method='pdftotext', encoding='utf-8').decode('utf-8', errors='ignore').split(" ")
+    except UnicodeDecodeError:
+      text = textract.process(book_addr, method='tesseract', encoding='utf-8').decode('utf-8', errors='ignore').split(" ")
     operations = []
     for x in range(len(text)//tbs):
       line = re.sub(r"\s+", " ", " ".join(text[x*tbs:min(len(text),(x+1)*tbs)]).replace("\n", " "))
       #print(line)
       operations.append({"index": {"_index": "book_index"}})
       new_op = {
-        "title":"{} pt {}".format(title,str(x)),
-        "text_vector":model.encode(f"{author} {title} {pddesc} {tstr} {line}").tolist(),
+        "title": f"{title} pt {str(1+x)}/{str(1+len(text)//tbs)}",
+        "text_vector": weighted_encode( [author, title, description, tstr, line], [5, 5, 5, 5, 80], model),
         "text":line,
         "description":description,
         "author":author
@@ -184,7 +225,13 @@ for item in tqdm(book_list):
         new_op["tags"] = tags
       operations.append(new_op)
     if len(operations) > 0:
-      client.bulk(index="book_index", operations=operations, refresh=True)
+      for chunk in chunk_operations(operations):
+        try:
+            client.bulk(index="book_index", operations=chunk, refresh=True)
+        except Exception as e:
+            print(f"Bulk indexing error: {e}")
+            errs.append([book_addr, meta, str(e)])
+    hash_library = {}
   except Exception as e:
     print(e)
     errs.append([item[0],item[1],str(e)])
@@ -201,11 +248,7 @@ for item in tqdm(vid_list):
     author = vid_addr.split("/")[-3]
     #print(author)
     description = ffmpeg.probe(vid_addr)["format"]["tags"].get("DESCRIPTION", "An excerpt of the video {} by {}".format(title,author))
-    pddesc = pare_down(description)
-    #print(description)
-    # with open(transcript, 'rb') as f:
-    #   hash = str(md5(f.read()).hexdigest()[:10])
-    #print(hash)
+
     text = (" ".join(open(transcript,"r").readlines()[9::8])).split(" ")
     operations = []
     for x in range(len(text)//tbs):
@@ -213,8 +256,8 @@ for item in tqdm(vid_list):
       #print(len(line))
       operations.append({"index": {"_index": "book_index"}})
       operations.append({
-        "title":"{} pt {}".format(title,str(x)),
-        "text_vector":model.encode(f"{author} {title} {pddesc} {line}").tolist(),
+        "title": f"{title} pt {str(1+x)}/{str(1+len(text)//tbs)}",
+        "text_vector":weighted_encode([author, title, description, line], [5, 5, 5, 80], model),
         "text":line,
         "description":description,
         "author":author

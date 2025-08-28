@@ -115,7 +115,7 @@ if __name__ == "__main__":
     print("\n")
 
     convo.append(text_input)
-    response = iris.iris_convo(resps + convo, fade, args.search_results, args.search_temp)
+    response = iris.iris_convo(convo, fade, args.search_results, args.search_temp)
 
     message_chain = [
             {
@@ -160,7 +160,7 @@ if __name__ == "__main__":
         text_input = big_input("> ")
         convo.append(text_input)
         print("\n")
-        response = iris.iris_convo(resps + convo, fade, 22 + (3 * message_no), 0.72)
+        response = iris.iris_convo(convo, fade, 22 + (3 * message_no), 0.72)
         message_chain.append({
             "role": "assistant",
             "content": oai_resp_txt

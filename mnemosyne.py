@@ -24,16 +24,10 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 # text block size
 tbs = 350
 hash_library = {}
-top = []
-
-with open("./100_most_common.txt") as f:
-  top = [l.strip().lower() for l in f.readlines()]
 
 def pare_down(input):
   input = input.lower()
   input = re.sub(r"[\W\s]+", " ", input)
-  for w in top:
-    input = input.replace(f" {w} ", " ")
   return input
 
 def detect_encoding(file_path):

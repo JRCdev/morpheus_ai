@@ -10,10 +10,9 @@ from rich.markdown import Markdown
 import re
 import json
 import argparse
+import pandas as pd 
 
 #console = Console()
-
-
 
 r.seed()
 fade = (1 + 5 ** 0.5) / 2 # golden ratio
@@ -69,11 +68,11 @@ def gen_prompt_spike(response, prompt):
 # main function invocation
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optional Flags for the Morpheus script") 
-    parser.add_argument('--search-results', type=int, default=50, help='Number of search results (default: 25)') 
-    parser.add_argument('--search-temp', type=float, default=50, help='Threshold of Elasticsearch Documents (default: 0.72)') 
+    parser.add_argument('--search-results', type=int, default=50, help='Number of search results (default: 50)') 
+    parser.add_argument('--search-temp', type=float, default=0.72, help='Threshold of Elasticsearch Documents (default: 0.72)') 
     parser.add_argument('--config', type=str, default='config.json', help='Config file path (default: config.json)') 
     parser.add_argument('--prompt', type=str, default='prompt.txt', help='Prompt file path (default: prompt.txt)')
-    parser.add_argument('--convo-id', type=int, default=r.random()*100000000, help='Conversation ID to continue from a previous chat')
+    parser.add_argument('--convo-id', type=int, default=None, help='Conversation ID to continue from a previous chat')
     
 
     with open('config.json', 'r') as file:
@@ -94,13 +93,30 @@ if __name__ == "__main__":
         PROMPT = p.read()
 
     start_txt = "\nECHELON IV\nMORPHEUS ONLINE\nHow may I assist you?"
-    print(start_txt)
+
+    convo = []
+    resps = [start_txt.strip()]
+
+    if args.convo_id is not None:
+        df_history = pd.read_sql_query(f"SELECT id, prompt, response, ts FROM interactions where id like '{args.convo_id}-%' order by ts", con)
+        msg_id = args.convo_id
+        convo = df_history['prompt'].to_list()
+        resps = resps + df_history['response'].to_list()
+    else:       
+        msg_id = int(r.random()*100000000)
+
+    message_no = len(convo)
+
+    for x in range(min(len(convo),len(resps))):
+        print(f"{resps[x]}\n+> {convo[x]}\n\n")
+    print(f"{resps[-1]}\n" if len(resps) > 1 else "")
+
     text_input = big_input("> ")
-    convo = [text_input]
     print("\n")
-    response = iris.iris_convo(convo, fade, args.search_results, args.search_temp)
-    msg_id = int(r.random()*100000000)
-    message_no = 0
+
+    convo.append(text_input)
+    response = iris.iris_convo(resps + convo, fade, args.search_results, args.search_temp)
+
     message_chain = [
             {
                 "role": "system",
@@ -109,19 +125,24 @@ if __name__ == "__main__":
             {
                 "role": "tool",
                 "content": gen_prompt_spike(response, "%SEGMENTS%")
-            },
-            {
-                "role": "assistant",
-                "content": start_txt.strip()
-            },
-            {
-                "role": "user",
-                "content": text_input,
             }
         ]
+    
+    for x in range(min(len(convo),len(resps))):
+        message_chain.append({
+                "role": "assistant",
+                "content": resps[x]
+            })
+        message_chain.append({
+                "role": "user",
+                "content": convo[x]
+            })
+
+
     while (True):
         oai_resp_txt = chat_api_call(message_chain).choices[0].message.content
         xp(Markdown(oai_resp_txt, style="markdown"))
+        resps.append(oai_resp_txt)
         print("\nSources for further reading:")
         segments = "\n".join(["[{title} by {author}]".format(title=item["_source"]["title"],
                                         author=item["_source"]["author"]) for item in response["hits"]["hits"]])
@@ -139,7 +160,7 @@ if __name__ == "__main__":
         text_input = big_input("> ")
         convo.append(text_input)
         print("\n")
-        response = iris.iris_convo(convo, fade, 22 + (3 * message_no), 0.72)
+        response = iris.iris_convo(resps + convo, fade, 22 + (3 * message_no), 0.72)
         message_chain.append({
             "role": "assistant",
             "content": oai_resp_txt

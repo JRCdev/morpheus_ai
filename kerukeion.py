@@ -80,6 +80,12 @@ df_rare = df_rare.merge(min_ts, left_on='conversation_id', right_on='convo_id').
 # Sort by start_ts
 df_rare = df_rare.sort_values('start_ts')
 
+df_rare.rename(columns = {
+    "conversation_id":"ID",
+    "rarest_words":"Conversation Title",
+    "start_ts":"Start"
+}, inplace = True)
+
 # Set Pandas display options for better console output
 pd.set_option('display.max_rows', None)  # Show all rows
 #pd.set_option('display.width', 1000)     # Wide enough to prevent unnecessary wrapping

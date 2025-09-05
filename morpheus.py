@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     for x in range(min(len(convo),len(resps))):
         xp(Markdown(f"{resps[x]}\n\n+> {convo[x]}\n\n"))
-    xp(Markdown(f"{resps[-1]}\n" if len(resps) > 1 else ""))
+    xp(Markdown(f"{resps[-1]}\n")
 
     text_input = big_input("> ")
     print("\n")

@@ -87,7 +87,7 @@ def iris_search(query, num_of_results=5, relevance = 0.5):
             "field": "text_vector",
             "query_vector": query if isinstance(query, list) else model.encode(query.lower()).tolist(),  
             "k": num_of_results+2,
-            "num_candidates": (num_of_results+2) * 100,
+            "num_candidates": min(num_of_results+2) * 100, 9999),
         },
         min_score = relevance
     )

@@ -39,6 +39,30 @@ python .\mnemosyne.py --clear-cache --vacuum-cache --force-reindex
 python .\mnemosyne.py --no-cache --force-reindex
 ```
 
+### kerukeion.py
+
+Small conversation summarizer and title generator. New CLI flags allow filtering which conversations are displayed.
+
+- `--query` / `-q` : space-separated words to search for in the prompt+response text. Words are searched separately (AND semantics) and matching is case-insensitive.
+- `--min-size` : only show conversations with more than this many messages (integer).
+- `--min-start` : minimum conversation start date (inclusive). Accepts a unix epoch (seconds) or an ISO date string (e.g. `2025-08-11`).
+- `--max-start` : maximum conversation start date (inclusive). Same formats as `--min-start`.
+
+Notes:
+- Date parsing is flexible: the script will accept integer epochs or ISO-like date strings and will normalize them internally. Filtering uses inclusive comparisons (>= for `--min-start`, <= for `--max-start`).
+- The displayed `Start` column is formatted as `YYYY-MM-DD HH:MM:SS` for readability.
+- If you prefer OR semantics for the query or different date formats, the script can be adjusted — open an issue or request the change.
+
+Examples (PowerShell):
+
+```powershell
+# Show conversations containing both "invoice" and "error", longer than 10 messages, starting after 2023-01-01
+python .\kerukeion.py --query "invoice error" --min-size 10 --min-start 2023-01-01
+
+# Show conversations in a date window
+python .\kerukeion.py --min-start 2024-01-01 --max-start 2024-12-31
+```
+
 ## Development Roadmap
  - Conversation continuations
  - Branching Conversations

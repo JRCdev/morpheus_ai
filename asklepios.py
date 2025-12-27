@@ -6,8 +6,15 @@ from datetime import datetime as dt
 import random as r
 import re 
 import json
+import argparse
 
-pyramid_height = 4
+# CLI: allow overriding pyramid height and providing an optional seed text
+parser = argparse.ArgumentParser(description='Asklepios: build a pyramidal construct of related segments')
+parser.add_argument('--height', '-H', type=int, default=4, help='Pyramid height (controls search depth)')
+parser.add_argument('--text', '-t', type=str, default=None, help='Optional text to vectorize/use as query basis')
+args = parser.parse_args()
+
+pyramid_height = int(args.height)
 
 with open('config.json', 'r') as file:
     config = json.load(file)
@@ -21,7 +28,7 @@ client = OpenAI(
     base_url=URL,
 )
 
-vector_len = 384
+vector_len = config["elasticsearch"].get("vector_len", 384)
 r.seed()
 
 msg_id = int(r.random()*100000000)
@@ -78,9 +85,27 @@ def pyramid_construct(response, height):
     return resp_arr
 
 
-#source = input("\nBegin with a great thought or quote to build the pyramid:\n\n>")
-source = [r.random()*2-1 for _ in range(vector_len)]
-response = iris.iris_search(source, pyramid_height)["hits"]["hits"]
+if args.text:
+    # user provided a seed text; use that as the initial query (iris will encode it)
+    source_input = args.text
+    try:
+        response = iris.iris_search(source_input, pyramid_height)["hits"]["hits"]
+    except Exception as e:
+        print(f"Initial iris search failed for provided text: {e}")
+        sys.exit(1)
+else:
+    # default: random vector seed
+    source = [r.random()*2-1 for _ in range(vector_len)]
+    try:
+        response = iris.iris_search(source, pyramid_height)["hits"]["hits"]
+    except Exception as e:
+        print(f"Initial iris search failed for random vector: {e}")
+        sys.exit(1)
+
+# If no results, bail out early
+if not response or len(response) == 0:
+    print('No initial results found; try a different seed text or increase --height')
+    sys.exit(0)
 
 construct = pyramid_construct(response, pyramid_height)
 
@@ -96,7 +121,7 @@ sys_txt = """You are Morpheus, an advanced system for finding the most succinct 
             You will be provided a number of text segments that are deemed to be related as a network of knowledge.
             You will synthesize these segments, as best as possible, and cohere them into a finalized complete structure.
             Feel free to use the first section of your output as a scratch space to take notes before proceeding with the 
-            complete synthesized answer, and feel free to be verbose while doing so.
+            complete synthesized answer, and feel free to be verbose while doing so, the last section of your output should resemble an encyclopedia article, making references to the provided information.
             """
 
 prompt_block = ""
@@ -124,10 +149,31 @@ oai_resp_txt = chat_api_call(message_chain).choices[0].message.content
 
 print(oai_resp_txt)
 
-# (id,prompt,segments,response,ts)
+if args.text:
+    # use provided text as the article title (and keep a 'source' value for later DB use)
+    article_title = "Asklepios Synthesis: " + source_input
+    source = source_input
+else:
+    # map a -1..1 float vector to a string of shaded block characters
+    def vector_to_shade_string(vec, width=None):
+        shades = [' ', '░', '▒', '▓', '█']  # from least-filled to most-filled
+        def map_val(v):
+            v = max(-1.0, min(1.0, float(v)))
+            # normalize to 0..1, then to index in shades
+            idx = int(round(((v + 1.0) / 2.0) * (len(shades) - 1)))
+            return shades[idx]
+        s = ''.join(map_val(v) for v in vec)
+        if width and width > 0:
+            return '\n'.join(s[i:i+width] for i in range(0, len(s), width))
+        return s
+
+    shaded_string = vector_to_shade_string(source, width=64)
+    article_title = "Asklepios Synthesis: " + shaded_string
+
+
 cur.execute("""INSERT INTO interactions VALUES('{}','{}','{}','{}','{}')
             """.format("{}-{}".format(str(msg_id),"asklepios"),
-                        "Asklepios random vector: " + str(source).replace("'", "''"),
+                        article_title.replace("'", "''"),
                         prompt_block.replace("'", "''"),
                         oai_resp_txt.replace("'", "''"),
                         str(dt.now())))
